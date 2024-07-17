@@ -284,17 +284,17 @@ bool AClimbingSystemCharacter::CheckMantle(FVector& MantleTargetLocation) const 
 		return false;
 	}
 
-	FVector Start = HitResult.ImpactPoint + HitResult.ImpactNormal * -GetCapsuleComponent()->GetScaledCapsuleRadius() + FVector::UpVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
-	FVector End = Start - FVector::DownVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
-	FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-	Result = GetWorld()->SweepSingleByChannel(HitResult, Start, End, FQuat{}, ECC_Visibility, CapsuleShape, Params);
-	DrawDebugCapsuleTraceSingle(GetWorld(), Start, End, GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), EDrawDebugTrace::ForOneFrame, Result, HitResult, FColor::Purple, FColor::Purple, 5.f);
+	FVector Start = HitResult.ImpactPoint + HitResult.ImpactNormal * -50.f + FVector::UpVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
+	FVector End = Start + FVector::DownVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
+	FHitResult MantleHitResult;
+	Result = GetWorld()->LineTraceSingleByChannel(MantleHitResult, Start, End, ECC_Visibility, Params);
+	DrawDebugLineTraceSingle(GetWorld(), Start, End, EDrawDebugTrace::ForOneFrame, Result, MantleHitResult, FColor::Purple, FColor::Purple, 5.f);
 	if(!Result) {
 		return false;
 	}
-
+	
 	// 检测到一个位置了，检查这个位置是否能走
-	bool Ret = GetCharacterMovement()->IsWalkable(HitResult);
-	MantleTargetLocation = HitResult.ImpactPoint;
+	bool Ret = GetCharacterMovement()->IsWalkable(MantleHitResult);
+	MantleTargetLocation = MantleHitResult.ImpactPoint;
 	return Ret;
 }
