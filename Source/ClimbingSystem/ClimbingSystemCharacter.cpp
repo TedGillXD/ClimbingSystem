@@ -130,7 +130,21 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 			AddMovementInput(RightDirection, MovementVector.X);
 		}
 	} else if(CharacterMovementMode == Climbing) {
-		// TODO: 1. 完成爬墙的上下左右
+		// 1. 进行站立检测
+		DetectShouldExitClimbing();
+
+		// 2. 向上爬的时候检测现在是否已经能爬上去了
+		if(MovementVector.Y > 0) {
+			// 检查是否能站到顶上
+			FVector MantleTargetLocation;
+			if(CheckMantle(MantleTargetLocation)) {
+				// 爬到顶上能站的地方
+				GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Red, "Can Mantle!");
+				return;
+			}
+		}
+		
+		// 3. 爬墙的上下左右
 		// 做一次向前的LineTrace，得到当前Actor前方的点的Normal，使用这个Normal的切线向量作为移动的方向，上下左右都同理
 		FHitResult HitResult;
 		FCollisionQueryParams Params;
@@ -139,13 +153,6 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 
 		AddMovementInput(GetUpVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.Y);	// 朝着检测到的面的上切线方向移动
 		AddMovementInput(GetRightVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.X * -1);	// 朝着检测到的面的右切线方向移动
-		
-		// 2. 在向下的时候进行触地检测
-		if(MovementVector.Y < 0) {
-			DetectShouldExitClimbing();
-		} else if(MovementVector.Y > 0) {
-			// TODO: 做Mantle的检测，看看能不能爬到顶上去
-		}
 	}
 }
 
@@ -164,29 +171,40 @@ void AClimbingSystemCharacter::Look(const FInputActionValue& Value)
 
 void AClimbingSystemCharacter::CharacterJump() {
 	// 判断当前的状态
-	if(CharacterMovementMode == ECharacterMovementMode::Walking) {
+	if (CharacterMovementMode == ECharacterMovementMode::Walking) {
 		// 1. 判断前面是不是墙
 		FHitResult PelvisHitResult, HeadHitResult;
-		if(ClimbWallDetection(PelvisHitResult, HeadHitResult)) {
+		if (ClimbWallDetection(PelvisHitResult, HeadHitResult)) {
 			// 2. 如果是墙，则进入攀爬状态
 			GetCharacterMovement()->SetMovementMode(MOVE_Flying);
 			GetCharacterMovement()->bOrientRotationToMovement = false;
-			FQuat Rotation = FQuat::FindBetweenNormals(GetCapsuleComponent()->GetForwardVector(), HeadHitResult.Normal);
+            
+			FRotator DesiredRotation = FRotationMatrix::MakeFromX(-HeadHitResult.Normal).Rotator();
 			
 			FLatentActionInfo LatentInfo;
 			LatentInfo.CallbackTarget = this;
-			UKismetSystemLibrary::MoveComponentTo(RootComponent, HeadHitResult.Location + HeadHitResult.Normal * WallDistance, Rotation.Rotator(), false, false, 0.4, false, EMoveComponentAction::Type::Move, LatentInfo);
+			UKismetSystemLibrary::MoveComponentTo(
+				RootComponent, 
+				HeadHitResult.Location + HeadHitResult.Normal * WallDistance, 
+				DesiredRotation, 
+				false, false, 0.4f, false, 
+				EMoveComponentAction::Type::Move, 
+				LatentInfo
+			);
+            
 			this->CharacterMovementMode = Climbing;
 			return;
 		}
 
-		// 3. 如果不是，则跳跃
+		// 3. 如果不是墙，则执行跳跃
 		this->Jump();
 		this->CharacterMovementMode = Jumping;
-	} else if(CharacterMovementMode == Climbing) {
-		// 1. 检测通过这次条约已经到达了顶端
+	} else if (CharacterMovementMode == Climbing) {
+		// 在攀爬状态下处理进一步的跳跃逻辑
+		// 1. 检测通过这次跳跃是否到达了顶端
 		// 2. 如果不是，往上跳一大格
 		// 3. 如果是，则MoveComponent到具体的位置，然后播放到达顶端的动画
+		// 这里你需要实现具体的逻辑来判断是否到达顶端并执行相应的动作
 	}
 }
 
@@ -223,14 +241,26 @@ void AClimbingSystemCharacter::DetectShouldExitClimbing() {
 	bool Result = GetWorld()->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + (GetActorUpVector() * -1.f * ExitClimbingDetection), ECC_Visibility, Params);
 	DrawDebugLineTraceSingle(GetWorld(), GetActorLocation(), GetActorLocation() + (GetActorUpVector() * -1.f * ExitClimbingDetection), EDrawDebugTrace::ForOneFrame, Result, HitResult, FColor::Black, FColor::Black, 5.f);
 	if(Result) {
-		// 退出攀爬模式
-		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
-		GetCharacterMovement()->bOrientRotationToMovement = true;
-		// 调整Actor的Rotation使其垂直于XY平面(地面)
-		FRotator CurrentRotation = this->GetActorRotation();
-		this->SetActorRotation(FRotator(CurrentRotation.Pitch, CurrentRotation.Yaw, 0));
-		this->CharacterMovementMode = Walking;
+		ExitClimbing();
+		return;
 	}
+
+	// 检查角色与墙面的夹角
+	double DotValue = FVector::DotProduct(GetActorUpVector(), FVector::UpVector);
+	double CosineToAngle = FMath::Acos(DotValue);
+	if(double AngleInDegrees = FMath::RadiansToDegrees(CosineToAngle); AngleInDegrees >= 30.0) {
+		ExitClimbing();
+	}
+}
+
+void AClimbingSystemCharacter::ExitClimbing() {
+	// 退出攀爬模式
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	// 调整Actor的Rotation使其垂直于XY平面(地面)
+	FRotator CurrentRotation = this->GetActorRotation();
+	this->SetActorRotation(FRotator(CurrentRotation.Pitch, CurrentRotation.Yaw, 0));
+	this->CharacterMovementMode = Walking;
 }
 
 FVector AClimbingSystemCharacter::GetUpVectorOfCurrentVector(const FVector& DetectedNormal) {
@@ -240,4 +270,31 @@ FVector AClimbingSystemCharacter::GetUpVectorOfCurrentVector(const FVector& Dete
 
 FVector AClimbingSystemCharacter::GetRightVectorOfCurrentVector(const FVector& DetectedNormal) {
 	return FVector::CrossProduct(FVector::UpVector, DetectedNormal);
+}
+
+bool AClimbingSystemCharacter::CheckMantle(FVector& MantleTargetLocation) const {
+	const FVector ActorForward = GetActorForwardVector();
+	FVector TrueForwardVector = ActorForward.GetSafeNormal2D();
+
+	FHitResult HitResult;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	bool Result = GetWorld()->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + TrueForwardVector * WallDetectionLength, ECC_Visibility, Params);
+	if(!Result) {
+		return false;
+	}
+
+	FVector Start = HitResult.ImpactPoint + HitResult.ImpactNormal * -GetCapsuleComponent()->GetScaledCapsuleRadius() + FVector::UpVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
+	FVector End = Start - FVector::DownVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
+	FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	Result = GetWorld()->SweepSingleByChannel(HitResult, Start, End, FQuat{}, ECC_Visibility, CapsuleShape, Params);
+	DrawDebugCapsuleTraceSingle(GetWorld(), Start, End, GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), EDrawDebugTrace::ForOneFrame, Result, HitResult, FColor::Purple, FColor::Purple, 5.f);
+	if(!Result) {
+		return false;
+	}
+
+	// 检测到一个位置了，检查这个位置是否能走
+	bool Ret = GetCharacterMovement()->IsWalkable(HitResult);
+	MantleTargetLocation = HitResult.ImpactPoint;
+	return Ret;
 }

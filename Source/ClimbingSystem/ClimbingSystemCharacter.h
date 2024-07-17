@@ -97,12 +97,16 @@ private:
 	bool ClimbWallDetection(FHitResult& PelvisHitResult, FHitResult& HeadHitResult) const;
 
 	void DetectShouldExitClimbing();
+	void ExitClimbing();
 
 	// 计算当前检测到的面的向上的切线
 	static FVector GetUpVectorOfCurrentVector(const FVector& DetectedNormal);
 
 	// 计算当前检测到的面的向右的切线
 	static FVector GetRightVectorOfCurrentVector(const FVector& DetectedNormal);
+
+	// 检查目前是否满足Mantle的条件，返回是否能站到顶上以及目标位置
+	bool CheckMantle(FVector& MantleTargetLocation) const;
 
 protected:
 	// APawn interface
