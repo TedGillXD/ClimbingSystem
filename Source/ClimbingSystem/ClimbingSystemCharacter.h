@@ -70,6 +70,12 @@ private:	// Climbing System Components
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
 	float ExitClimbingDetection;		// 当在攀爬状态下向下行走的过程中，不断的向下进行LineTrace，当在这个距离内检测到地面了，则脱出攀爬模式回到Walking
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* IdleToOnWallMontage;	// 从Walking到抓在墙上的Montage
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* MantleMontage;		// Mantle的时候用的Montage
 	
 public:
 	AClimbingSystemCharacter();
@@ -97,6 +103,7 @@ private:
 	bool ClimbWallDetection(FHitResult& PelvisHitResult, FHitResult& HeadHitResult) const;
 
 	void DetectShouldExitClimbing();
+	void EnterClimbing(const FHitResult& HitResult);
 	void ExitClimbing();
 
 	// 计算当前检测到的面的向上的切线
@@ -107,6 +114,8 @@ private:
 	
 	// 检查目前是否满足Mantle的条件，返回是否能站到顶上以及目标位置
 	bool CheckMantle(FVector& MantleTargetLocation) const;
+
+	void Mantle(const FVector& TargetLocation);
 
 protected:
 	// APawn interface

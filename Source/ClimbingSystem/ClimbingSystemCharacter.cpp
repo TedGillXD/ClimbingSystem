@@ -112,7 +112,7 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 	// input is a Vector2D
 	FVector2D MovementVector = Value.Get<FVector2D>();
 	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Red, MovementVector.ToString());
-	if(CharacterMovementMode == Walking) {
+	if(CharacterMovementMode == Walking || CharacterMovementMode == Jumping) {
 		if (Controller != nullptr)
 		{
 			// find out which way is forward
@@ -140,9 +140,12 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 			if(CheckMantle(MantleTargetLocation)) {
 				// 爬到顶上能站的地方
 				GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Red, "Can Mantle!");
+				Mantle(MantleTargetLocation);
 				return;
 			}
 		}
+
+		// TODO: 需要检查是否需要停止移动(空位等情况)
 		
 		// 3. 爬墙的上下左右
 		// 做一次向前的LineTrace，得到当前Actor前方的点的Normal，使用这个Normal的切线向量作为移动的方向，上下左右都同理
@@ -176,23 +179,7 @@ void AClimbingSystemCharacter::CharacterJump() {
 		FHitResult PelvisHitResult, HeadHitResult;
 		if (ClimbWallDetection(PelvisHitResult, HeadHitResult)) {
 			// 2. 如果是墙，则进入攀爬状态
-			GetCharacterMovement()->SetMovementMode(MOVE_Flying);
-			GetCharacterMovement()->bOrientRotationToMovement = false;
-            
-			FRotator DesiredRotation = FRotationMatrix::MakeFromX(-HeadHitResult.Normal).Rotator();
-			
-			FLatentActionInfo LatentInfo;
-			LatentInfo.CallbackTarget = this;
-			UKismetSystemLibrary::MoveComponentTo(
-				RootComponent, 
-				HeadHitResult.Location + HeadHitResult.Normal * WallDistance, 
-				DesiredRotation, 
-				false, false, 0.4f, false, 
-				EMoveComponentAction::Type::Move, 
-				LatentInfo
-			);
-            
-			this->CharacterMovementMode = Climbing;
+			EnterClimbing(HeadHitResult);
 			return;
 		}
 
@@ -253,6 +240,31 @@ void AClimbingSystemCharacter::DetectShouldExitClimbing() {
 	}
 }
 
+void AClimbingSystemCharacter::EnterClimbing(const FHitResult& HitResult) {
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+
+	const FRotator DesiredRotation = FRotationMatrix::MakeFromX(-HitResult.Normal).Rotator();
+
+	float PlayTime = GetMesh()->GetAnimInstance()->Montage_Play(IdleToOnWallMontage);	// 播放蒙太奇
+	
+	FLatentActionInfo LatentInfo;
+	LatentInfo.CallbackTarget = this;
+	UKismetSystemLibrary::MoveComponentTo(
+		RootComponent, 
+		HitResult.Location + HitResult.Normal * WallDistance, 
+		DesiredRotation, 
+		false, false, PlayTime, false, 
+		EMoveComponentAction::Type::Move, 
+		LatentInfo
+	);
+
+	// 调整飞行的速度为攀爬的速度
+	GetCharacterMovement()->MaxFlySpeed = 100.f;
+	GetCharacterMovement()->BrakingDecelerationFlying = 2048.f;
+	this->CharacterMovementMode = Climbing;
+}
+
 void AClimbingSystemCharacter::ExitClimbing() {
 	// 退出攀爬模式
 	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
@@ -260,6 +272,8 @@ void AClimbingSystemCharacter::ExitClimbing() {
 	// 调整Actor的Rotation使其垂直于XY平面(地面)
 	FRotator CurrentRotation = this->GetActorRotation();
 	this->SetActorRotation(FRotator(CurrentRotation.Pitch, CurrentRotation.Yaw, 0));
+	GetCharacterMovement()->MaxFlySpeed = 600.f;
+	GetCharacterMovement()->BrakingDecelerationFlying = 0.f;
 	this->CharacterMovementMode = Walking;
 }
 
@@ -284,7 +298,7 @@ bool AClimbingSystemCharacter::CheckMantle(FVector& MantleTargetLocation) const 
 		return false;
 	}
 
-	FVector Start = HitResult.ImpactPoint + HitResult.ImpactNormal * -50.f + FVector::UpVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
+	FVector Start = HitResult.ImpactPoint + HitResult.ImpactNormal * -50.f + FVector::UpVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	FVector End = Start + FVector::DownVector * GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.f;
 	FHitResult MantleHitResult;
 	Result = GetWorld()->LineTraceSingleByChannel(MantleHitResult, Start, End, ECC_Visibility, Params);
@@ -297,4 +311,27 @@ bool AClimbingSystemCharacter::CheckMantle(FVector& MantleTargetLocation) const 
 	bool Ret = GetCharacterMovement()->IsWalkable(MantleHitResult);
 	MantleTargetLocation = MantleHitResult.ImpactPoint;
 	return Ret;
+}
+
+void AClimbingSystemCharacter::Mantle(const FVector& TargetLocation) {
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	const float PlayTime = GetMesh()->GetAnimInstance()->Montage_Play(MantleMontage);	// 播放蒙太奇
+	
+	FTimerHandle Handle;
+	GetWorldTimerManager().SetTimer(Handle, FTimerDelegate::CreateLambda([this, TargetLocation, PlayTime]() {
+		// 将组件移动到指定的位置
+		FLatentActionInfo LatentInfo;
+		LatentInfo.CallbackTarget = this;
+		UKismetSystemLibrary::MoveComponentTo(
+			RootComponent, 
+			TargetLocation + FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), 
+			GetActorRotation(), 
+			false, false, PlayTime, false, 
+			EMoveComponentAction::Type::Move, 
+			LatentInfo
+		);
+		ExitClimbing();
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}), PlayTime, false);
 }
