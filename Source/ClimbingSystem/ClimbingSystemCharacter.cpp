@@ -153,7 +153,7 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 		FCollisionQueryParams Params;
 		Params.AddIgnoredActor(this);
 		bool Result = GetWorld()->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + GetActorForwardVector() * (WallDistance + 10.f), ECC_Visibility, Params);
-
+		GetCapsuleComponent()->SetWorldRotation(FRotationMatrix::MakeFromX(-HitResult.Normal).Rotator());		// TODO: (有问题)修改角色的旋转使其每次都正面朝着墙面
 		AddMovementInput(GetUpVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.Y);	// 朝着检测到的面的上切线方向移动
 		AddMovementInput(GetRightVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.X * -1);	// 朝着检测到的面的右切线方向移动
 	}
