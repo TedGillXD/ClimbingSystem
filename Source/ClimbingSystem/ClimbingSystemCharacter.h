@@ -104,6 +104,7 @@ private:
 
 	void DetectShouldExitClimbing();
 	void EnterClimbing(const FHitResult& HitResult);
+	void EnterClimbingWithoutMontage(const FHitResult& HitResult);
 	void ExitClimbing();
 
 	// 计算当前检测到的面的向上的切线
@@ -123,6 +124,8 @@ protected:
 	
 	// To add mapping context
 	virtual void BeginPlay();
+
+	virtual void Tick(float DeltaSeconds) override;
 
 public:
 	/** Returns CameraBoom subobject **/

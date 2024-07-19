@@ -83,6 +83,16 @@ void AClimbingSystemCharacter::BeginPlay()
 	}
 }
 
+void AClimbingSystemCharacter::Tick(float DeltaSeconds) {
+	Super::Tick(DeltaSeconds);
+
+	if(GetCharacterMovement()->IsFalling()) {
+		if(FHitResult PelvisHitResult, HeadHitResult; ClimbWallDetection(PelvisHitResult, HeadHitResult)) {
+			EnterClimbingWithoutMontage(HeadHitResult);
+		}
+	}
+}
+
 //////////////////////////////////////////////////////////////////////////
 // Input
 
@@ -153,7 +163,8 @@ void AClimbingSystemCharacter::Move(const FInputActionValue& Value)
 		FCollisionQueryParams Params;
 		Params.AddIgnoredActor(this);
 		bool Result = GetWorld()->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + GetActorForwardVector() * (WallDistance + 10.f), ECC_Visibility, Params);
-		GetCapsuleComponent()->SetWorldRotation(FRotationMatrix::MakeFromX(-HitResult.Normal).Rotator());		// TODO: (有问题)修改角色的旋转使其每次都正面朝着墙面
+		FRotator TargetRotation = FRotationMatrix::MakeFromX(-HitResult.ImpactNormal).Rotator();
+		GetCapsuleComponent()->SetWorldRotation(TargetRotation);		// TODO: (有问题)修改角色的旋转使其每次都正面朝着墙面
 		AddMovementInput(GetUpVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.Y);	// 朝着检测到的面的上切线方向移动
 		AddMovementInput(GetRightVectorOfCurrentVector(HitResult.ImpactNormal), MovementVector.X * -1);	// 朝着检测到的面的右切线方向移动
 	}
@@ -255,6 +266,29 @@ void AClimbingSystemCharacter::EnterClimbing(const FHitResult& HitResult) {
 		HitResult.Location + HitResult.Normal * WallDistance, 
 		DesiredRotation, 
 		false, false, PlayTime, false, 
+		EMoveComponentAction::Type::Move, 
+		LatentInfo
+	);
+
+	// 调整飞行的速度为攀爬的速度
+	GetCharacterMovement()->MaxFlySpeed = 100.f;
+	GetCharacterMovement()->BrakingDecelerationFlying = 2048.f;
+	this->CharacterMovementMode = Climbing;
+}
+
+void AClimbingSystemCharacter::EnterClimbingWithoutMontage(const FHitResult& HitResult) {
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+
+	const FRotator DesiredRotation = FRotationMatrix::MakeFromX(-HitResult.Normal).Rotator();
+	
+	FLatentActionInfo LatentInfo;
+	LatentInfo.CallbackTarget = this;
+	UKismetSystemLibrary::MoveComponentTo(
+		RootComponent, 
+		HitResult.Location + HitResult.Normal * WallDistance, 
+		DesiredRotation, 
+		false, false, 0.3, false, 
 		EMoveComponentAction::Type::Move, 
 		LatentInfo
 	);
