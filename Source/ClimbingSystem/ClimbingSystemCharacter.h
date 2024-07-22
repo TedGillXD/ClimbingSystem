@@ -76,6 +76,9 @@ private:	// Climbing System Components
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
 	UAnimMontage* MantleMontage;		// Mantle的时候用的Montage
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	float WallDistanceOffset;
 	
 public:
 	AClimbingSystemCharacter();
@@ -102,7 +105,7 @@ private:
 	 */
 	bool ClimbWallDetection(FHitResult& PelvisHitResult, FHitResult& HeadHitResult) const;
 
-	void DetectShouldExitClimbing();
+	bool DetectShouldExitClimbing();
 	void EnterClimbing(const FHitResult& HitResult);
 	void EnterClimbingWithoutMontage(const FHitResult& HitResult);
 	void ExitClimbing();
